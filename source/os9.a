@@ -1,0 +1,85 @@
+;-------------------------------------------
+;---                                     ---
+;---        OS9 for Apple II 6809        ---
+;---        Written by Alex Freed        ---
+;---        Copyright  (c) 2012          ---
+;---                                     ---
+;---        Compiled by Wyatt Wong       ---
+;---        on 2022-03-18                ---
+;---                                     ---
+;--- This source code must be assembled  ---
+;--- using ACME assembler.               ---
+;---                                     ---
+;--- Reference:                          ---
+;--- https://github.com/martinpiper/ACME ---
+;---                                     ---
+;-------------------------------------------
+
+		!to "MILL_INT", cbm	; set output file and format
+
+; This is a pseudo opcode to select the output filename and format.
+; This can also be done using the command line options "-o" and "-f",
+; respectively.
+
+		*= $f00			; set program counter
+
+		mailbox	= $fe0		; FFE0 in 6809 space
+		keylock	= $fe1
+		tvlock	= $fe2
+
+		ldy #$40		; Apple II 6809 in slot 4
+		lda #$0
+		sta $C081,y		; halt
+		sta $C082,y		; reset
+		sta keylock		; init to empty
+		sta tvlock
+
+		lda #$80
+		sta $C087,y		; no mem mapping
+		sta $C083,y		; no IRQ
+		sta $C084,y		; no FIRQ
+		sta $C085,y		; no NMI
+		sta $C081,y		; remove halt
+		sta $C082,y		; and go!
+
+scankey 	lda $c000	
+		sei			; no ints
+		nop
+		bpl no_key
+		cmp #$82		; ^B break
+		beq do_break
+		ldx keylock
+		bne no_key		; busy - ignore key
+		ldx $c010		; clear strobe  
+		and #$7f
+		sta keylock
+		jmp no_key
+
+do_break	ldx $c010		; clear strobe
+		lda #0
+		sta $C080,y		; clear int to 6502 just in case
+		sta $C081,y		; halt
+		BRK 			; break to apple monitor
+		nop
+		lda #$80		; if "G" entered
+		sta $C081,y		; remove halt
+		nop
+
+no_key		lda tvlock
+		beq scankey		; loop back
+		cmp #$0a		; LF?
+		beq ignore
+		cmp #$60		; lowercase ?
+		bcc not_lower
+		and #$5f		; convert to upper
+not_lower	ora #$80	  	; for Apple display
+		jsr $FDF0	  	; COUT1
+
+ignore		lda #0
+		sta tvlock
+		jmp scankey
+		
+		*=$ffe			; 6809 reset vector point to $400,
+					; $1400 in Apple space
+
+		!byte $04, $00
